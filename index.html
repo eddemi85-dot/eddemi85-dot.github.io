@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A. Mercer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=Space+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <a href="#layer-illustrations" class="skip-link">Skip to illustrations</a>
+  <div id="sr-announcement" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
+
+  <!-- ── Loading screen ────────────────────────────────── -->
+  <div id="loading-screen" aria-label="Loading" aria-live="polite">
+    <div id="loading-orbit">
+      <div id="loading-plane-arm">
+        <div id="loading-plane">✈️</div>
+      </div>
+    </div>
+    <p id="loading-label">boarding...</p>
+  </div>
+
+  <canvas id="sky" aria-hidden="true"></canvas>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- ── Fixed HUD ──────────────────────────────────────── -->
+  <div id="hud">
+    <div id="site-title">
+      <!-- Hand-drawn title image goes here -->
+    </div>
+    <nav id="nav-locations" aria-label="Locations">
+      <a href="#" data-cx="3000" data-cy="3000">Tenerife</a>
+      <a href="#" data-cx="4400" data-cy="4400">Gran Canaria</a>
+      <a href="#" data-cx="1600" data-cy="4400">Fuerteventura</a>
+    </nav>
+    <nav id="hud-nav">
+      <button id="btn-about">About</button>
+      <button id="btn-contact">Contact</button>
+    </nav>
+    <div id="hud-zoom">
+      <button id="btn-zoom-in"  aria-label="Zoom in">+</button>
+      <button id="btn-zoom-out" aria-label="Zoom out">−</button>
+    </div>
+  </div>
+
+  <!-- ── Hint ───────────────────────────────────────────── -->
+  <div id="hint" aria-hidden="true">drag to explore</div>
+
+  <!-- ── About overlay ──────────────────────────────────── -->
+  <div id="overlay-about" class="overlay" role="dialog" aria-modal="true" aria-label="About">
+    <button class="overlay-close" aria-label="Close">&#215;</button>
+    <div class="overlay-inner">
+      <h2>Ava<br>Mercer</h2>
+      <p>
+        Illustrator and visual artist based in London. The work is mostly about quiet things — ordinary moments, plants, faces, places half-remembered. Drawn first, thought about second.
+      </p>
+      <p>
+        Available for editorial commissions, book covers, and collaborative projects. Past clients include The New Yorker, Penguin Random House, and The Guardian.
+      </p>
+      <p class="meta">Studio</p>
+      <p>London, UK &mdash; open for commissions</p>
+    </div>
+  </div>
+
+  <!-- ── Contact overlay ────────────────────────────────── -->
+  <div id="overlay-contact" class="overlay" role="dialog" aria-modal="true" aria-label="Contact">
+    <button class="overlay-close" aria-label="Close">&#215;</button>
+    <div class="overlay-inner">
+      <h2>Get in<br>touch</h2>
+      <p class="meta">Commissions &amp; enquiries</p>
+      <p><a href="mailto:hello@amercer.studio">hello@amercer.studio</a></p>
+      <p>Currently open for work. Response within 48 hours.</p>
+      <p class="meta">Social</p>
+      <p><a href="#">@amercer.studio</a></p>
+    </div>
+  </div>
+
+  <!-- ── Infinite Canvas ────────────────────────────────── -->
+  <div id="canvas">
+
+    <!-- Layers are populated dynamically from images/{Project}/{top|middle|bottom}/ -->
+    <div id="layer-textures"></div>
+    <div id="layer-illustrations" tabindex="-1"></div>
+    <div id="layer-sheets"></div>
+    <div id="layer-spots"></div>
+
+  </div><!-- /#canvas -->
+
+  <script>
+    (function () {
+
+      /* ── Constants ──────────────────────────────────────── */
+      var CANVAS_W    = 6000;
+      var CANVAS_H    = 6000;
+      var FRICTION    = 0.91;
+      var MIN_SPEED   = 0.4;
+      var ARROW_SPEED = 14;
+      var LAZY_BUFFER = 320;
+      var MIN_SCALE   = 0.3;
+      var MAX_SCALE   = 2.5;
+
+      // Parallax multipliers per layer.
+      // Textures lag behind (0.90), spots lead ahead (1.08).
+      // Illustrations are the reference at 1.00.
+      var F_TEX   = 0.90;
+      var F_ILLUS = 1.00;
+      var F_SPOTS = 1.08;
+
+      // Landing point — matches Tenerife nav target
+      var LANDING_CX = 3000;
+      var LANDING_CY = 3000;
+
+      /* ── State ──────────────────────────────────────────── */
+      var tx = 0, ty = 0;    // base translation (reference: illustrations layer)
+      var scale = 1;         // current zoom level
+      var isDragging = false;
+      var dragMoved  = false;
+      var dragX0, dragY0, tx0, ty0;
+      var lastX, lastY;
+      var vx = 0, vy = 0;
+      var inertiaRaf = null;
+      var arrowRaf   = null;
+      var navRaf     = null;
+      var keys = new Set();
+      var pendingImgs = [];
+      var draggingSpot = null;
+      var spotDragOffX = 0;
+      var spotDragOffY = 0;
+      var isPinching   = false;
+      var pinchDist0   = 0;
+      var pinchScale0  = 1;
+      var loadingTotal  = 0;
+      var loadingLoaded = 0;
+      window._loadStart = Date.now();
+
+      /* ── DOM refs ───────────────────────────────────────── */
+      var canvas    = document.getElementById('canvas');
+      var hint      = document.getElementById('hint');
+      var overlays  = document.querySelectorAll('.overlay');
+      var closeBtns = document.querySelectorAll('.overlay-close');
+      var layerTex    = document.getElementById('layer-textures');
+      var layerIll    = document.getElementById('layer-illustrations');
+      var layerSheets = document.getElementById('layer-sheets');
+      var layerSpt    = document.getElementById('layer-spots');
+
+      /* ── Transform ──────────────────────────────────────── */
+      // Each layer is translated independently at its parallax factor,
+      // then scaled uniformly. transform-origin: 0 0 means scale anchors
+      // at the canvas origin, so cursor-centred zoom math holds.
+      function applyTransform() {
+        var sc = 'px) scale(' + scale + ')';
+        layerTex.style.transform    = 'translate(' + (tx * F_TEX)   + 'px,' + (ty * F_TEX)   + sc;
+        layerIll.style.transform    = 'translate(' + (tx * F_ILLUS) + 'px,' + (ty * F_ILLUS) + sc;
+        layerSheets.style.transform = 'translate(' + (tx * F_SPOTS) + 'px,' + (ty * F_SPOTS) + sc;
+        layerSpt.style.transform    = 'translate(' + (tx * F_SPOTS) + 'px,' + (ty * F_SPOTS) + sc;
+      }
+
+      function touchDist(touches) {
+        var dx = touches[0].clientX - touches[1].clientX;
+        var dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function clamp(val, lo, hi) {
+        return val < lo ? lo : val > hi ? hi : val;
+      }
+
+      // Clamp so the scaled canvas never wanders entirely off screen.
+      function clampPos() {
+        var EDGE    = 120;
+        var scaledW = CANVAS_W * scale;
+        var scaledH = CANVAS_H * scale;
+        var minTx   = scaledW > window.innerWidth  ? -(scaledW - window.innerWidth  + EDGE) : EDGE;
+        var minTy   = scaledH > window.innerHeight ? -(scaledH - window.innerHeight + EDGE) : EDGE;
+        tx = clamp(tx, minTx, EDGE);
+        ty = clamp(ty, minTy, EDGE);
+      }
+
+      function moveTo(newTx, newTy) {
+        tx = newTx;
+        ty = newTy;
+        clampPos();
+        applyTransform();
+        checkVisible();
+      }
+
+      /* ── Drag (mouse fallback) ──────────────────────────── */
+      function startDrag(x, y) {
+        if (inertiaRaf) { cancelAnimationFrame(inertiaRaf); inertiaRaf = null; }
+        if (navRaf)     { cancelAnimationFrame(navRaf);     navRaf = null; }
+        isDragging = true;
+        dragMoved  = false;
+        dragX0 = x; dragY0 = y;
+        tx0 = tx;   ty0 = ty;
+        lastX = x;  lastY = y;
+        vx = 0;     vy = 0;
+        document.body.classList.add('is-dragging');
+      }
+
+      function moveDrag(x, y) {
+        if (draggingSpot) {
+          var w        = parseInt(draggingSpot.style.width,        10);
+          var h        = parseInt(draggingSpot.style.height,       10);
+          var newLeft  = (x - tx * F_SPOTS) / scale - spotDragOffX;
+          var newTop   = (y - ty * F_SPOTS) / scale - spotDragOffY;
+          newLeft = clamp(newLeft, 0, CANVAS_W - w);
+          newTop  = clamp(newTop,  0, CANVAS_H - h);
+          draggingSpot.style.left = Math.round(newLeft) + 'px';
+          draggingSpot.style.top  = Math.round(newTop)  + 'px';
+          return;
+        }
+        if (!isDragging) return;
+        vx = x - lastX;
+        vy = y - lastY;
+        lastX = x;
+        lastY = y;
+        if (Math.abs(x - dragX0) > 4 || Math.abs(y - dragY0) > 4) dragMoved = true;
+        moveTo(tx0 + (x - dragX0), ty0 + (y - dragY0));
+      }
+
+      function endDrag() {
+        if (draggingSpot) {
+          draggingSpot.classList.remove('is-dragging');
+          draggingSpot.dataset.onSheet = 'false';
+          if (draggingSpot._onDragEnd) draggingSpot._onDragEnd();
+          draggingSpot = null;
+          document.body.classList.remove('is-dragging');
+          return;
+        }
+        if (!isDragging) return;
+        isDragging = false;
+        document.body.classList.remove('is-dragging');
+        if (Math.abs(vx) > MIN_SPEED || Math.abs(vy) > MIN_SPEED) {
+          inertiaRaf = requestAnimationFrame(inertiaStep);
+        }
+      }
+
+      /* ── Inertia ────────────────────────────────────────── */
+      function inertiaStep() {
+        tx += vx;
+        ty += vy;
+        vx *= FRICTION;
+        vy *= FRICTION;
+        clampPos();
+        applyTransform();
+        checkVisible();
+        if (Math.abs(vx) > MIN_SPEED || Math.abs(vy) > MIN_SPEED) {
+          inertiaRaf = requestAnimationFrame(inertiaStep);
+        } else {
+          inertiaRaf = null;
+        }
+      }
+
+      /* ── Keyboard pan ───────────────────────────────────── */
+      function arrowStep() {
+        var moved = false;
+        if (keys.has('ArrowLeft'))  { tx += ARROW_SPEED; moved = true; }
+        if (keys.has('ArrowRight')) { tx -= ARROW_SPEED; moved = true; }
+        if (keys.has('ArrowUp'))    { ty += ARROW_SPEED; moved = true; }
+        if (keys.has('ArrowDown'))  { ty -= ARROW_SPEED; moved = true; }
+        if (moved) {
+          clampPos();
+          applyTransform();
+          checkVisible();
+          arrowRaf = requestAnimationFrame(arrowStep);
+        } else {
+          arrowRaf = null;
+        }
+      }
+
+      /* ── Trackpad swipe + pinch zoom ────────────────────── */
+      // ctrlKey signals a pinch gesture on macOS trackpads (or Ctrl+scroll
+      // on a mouse). Without ctrlKey it's a two-finger swipe or mouse wheel.
+      document.addEventListener('wheel', function (e) {
+        e.preventDefault();
+
+        if (e.ctrlKey) {
+          // ── Pinch to zoom ────────────────────────────────
+          // Math.pow(0.993, deltaY) gives smooth exponential scaling.
+          // deltaY > 0  → zoom out;  deltaY < 0  → zoom in.
+          var factor   = Math.pow(0.993, e.deltaY);
+          var newScale = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+
+          // Keep the canvas point currently under the cursor fixed in
+          // viewport space after the scale change:
+          //   viewportX = canvasX * scale + tx
+          //   canvasX   = (viewportX - tx) / scale
+          //   tx_new    = viewportX - canvasX * newScale
+          tx    = e.clientX - ((e.clientX - tx) / scale) * newScale;
+          ty    = e.clientY - ((e.clientY - ty) / scale) * newScale;
+          scale = newScale;
+
+        } else {
+          // ── Two-finger swipe (trackpad) or mouse wheel ───
+          // deltaMode 0 = pixels (trackpad): map 1:1.
+          // deltaMode 1 = lines  (mouse wheel): scale up to pixel equivalent.
+          var mult = e.deltaMode === 0 ? 1 : 24;
+          tx -= e.deltaX * mult;
+          ty -= e.deltaY * mult;
+        }
+
+        clampPos();
+        applyTransform();
+        checkVisible();
+      }, { passive: false });
+
+      /* ── Lazy load ──────────────────────────────────────── */
+      function initLazy() {
+        pendingImgs = Array.from(document.querySelectorAll('[data-src]'));
+      }
+
+      // Visibility is computed against the illustrations layer (F_ILLUS = 1.0),
+      // which is the coordinate system the element positions are defined in.
+      // The LAZY_BUFFER also compensates for the small parallax offset of the
+      // textures (10%) and spots (8%) layers.
+      function checkVisible() {
+        if (!pendingImgs.length) return;
+        var vpL = (-tx)                       / scale - LAZY_BUFFER;
+        var vpT = (-ty)                       / scale - LAZY_BUFFER;
+        var vpR = (window.innerWidth  - tx)   / scale + LAZY_BUFFER;
+        var vpB = (window.innerHeight - ty)   / scale + LAZY_BUFFER;
+
+        pendingImgs = pendingImgs.filter(function (el) {
+          var l = parseInt(el.style.left,   10) || 0;
+          var t = parseInt(el.style.top,    10) || 0;
+          var w = parseInt(el.style.width,  10) || 0;
+          var h = parseInt(el.style.height, 10) || 0;
+          if (l + w > vpL && l < vpR && t + h > vpT && t < vpB) {
+            loadEl(el);
+            return false;
+          }
+          return true;
+        });
+      }
+
+      function loadEl(el) {
+        var src = el.getAttribute('data-src');
+        var alt = el.getAttribute('data-alt') || '';
+        el.removeAttribute('data-src');
+        var img = document.createElement('img');
+        img.alt = alt;
+        img.onload  = onImageLoaded;
+        img.onerror = onImageLoaded;
+        img.src = src;
+        img.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none;';
+        el.appendChild(img);
+      }
+
+      function onImageLoaded() {
+        loadingLoaded++;
+        if (loadingLoaded >= loadingTotal && loadingTotal > 0) dismissLoadingScreen();
+      }
+
+      function dismissLoadingScreen() {
+        var screen = document.getElementById('loading-screen');
+        if (!screen) return;
+        var elapsed   = Date.now() - window._loadStart;
+        var remaining = Math.max(0, 2000 - elapsed);
+        setTimeout(function () {
+          screen.style.opacity = '0';
+          setTimeout(function () {
+            if (screen.parentNode) screen.parentNode.removeChild(screen);
+          }, 500);
+        }, remaining + 600);
+      }
+
+      /* ── Overlays ───────────────────────────────────────── */
+      var activeOverlay = null;
+
+      function openOverlay(id) {
+        closeOverlay();
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add('is-open');
+        activeOverlay = el;
+        el.querySelector('.overlay-close').focus();
+      }
+
+      function closeOverlay() {
+        if (!activeOverlay) return;
+        activeOverlay.classList.remove('is-open');
+        activeOverlay = null;
+      }
+
+      /* ── Hint ───────────────────────────────────────────── */
+      function initHint() {
+        setTimeout(function () { hint.classList.add('is-gone'); }, 3000);
+      }
+
+      /* ── Mouse drag events ──────────────────────────────── */
+      canvas.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        startDrag(e.clientX, e.clientY);
+      });
+
+      document.addEventListener('mousemove', function (e) { moveDrag(e.clientX, e.clientY); });
+      document.addEventListener('mouseup',   function ()  { endDrag(); });
+
+      /* ── Touch events ───────────────────────────────────── */
+      canvas.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 2) {
+          isPinching  = true;
+          isDragging  = false;
+          document.body.classList.remove('is-dragging');
+          pinchDist0  = touchDist(e.touches);
+          pinchScale0 = scale;
+        } else if (e.touches.length === 1 && !isPinching) {
+          startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', function (e) {
+        if (isPinching && e.touches.length === 2) {
+          var dist     = touchDist(e.touches);
+          // Already at minimum zoom and pinching outward — let Safari handle
+          // the native pinch-out-to-tabs gesture instead of consuming it.
+          if (scale <= MIN_SCALE && dist < pinchDist0) return;
+          e.preventDefault();
+          var midX     = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          var midY     = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          var newScale = clamp(pinchScale0 * (dist / pinchDist0), MIN_SCALE, MAX_SCALE);
+          tx    = midX - ((midX - tx) / scale) * newScale;
+          ty    = midY - ((midY - ty) / scale) * newScale;
+          scale = newScale;
+          clampPos();
+          applyTransform();
+          checkVisible();
+        } else if (!isPinching && e.touches.length === 1) {
+          e.preventDefault();
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', function (e) {
+        if (isPinching) {
+          if (e.touches.length < 2) isPinching = false;
+        } else {
+          endDrag();
+        }
+      });
+
+      /* ── Keyboard events ────────────────────────────────── */
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeOverlay(); return; }
+        if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].indexOf(e.key) !== -1) {
+          e.preventDefault();
+          keys.add(e.key);
+          if (!arrowRaf) arrowRaf = requestAnimationFrame(arrowStep);
+        }
+      });
+
+      document.addEventListener('keyup', function (e) { keys.delete(e.key); });
+
+      /* ── HUD / overlay events ───────────────────────────── */
+      document.getElementById('btn-about').addEventListener('click',   function () { openOverlay('overlay-about'); });
+      document.getElementById('btn-contact').addEventListener('click', function () { openOverlay('overlay-contact'); });
+
+      function updateZoomButtons() {
+        document.getElementById('btn-zoom-in').disabled  = scale >= MAX_SCALE;
+        document.getElementById('btn-zoom-out').disabled = scale <= MIN_SCALE;
+      }
+
+      function zoomViewport(factor) {
+        var midX     = window.innerWidth  / 2;
+        var midY     = window.innerHeight / 2;
+        var newScale = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+        tx    = midX - ((midX - tx) / scale) * newScale;
+        ty    = midY - ((midY - ty) / scale) * newScale;
+        scale = newScale;
+        clampPos();
+        applyTransform();
+        checkVisible();
+        updateZoomButtons();
+      }
+
+      document.getElementById('btn-zoom-in').addEventListener('click',  function () { zoomViewport(1.25); });
+      document.getElementById('btn-zoom-out').addEventListener('click', function () { zoomViewport(0.8); });
+
+      closeBtns.forEach(function (btn) { btn.addEventListener('click', closeOverlay); });
+
+      overlays.forEach(function (ov) {
+        ov.addEventListener('click', function (e) { if (e.target === ov) closeOverlay(); });
+      });
+
+      document.getElementById('hud').addEventListener('mousedown', function (e) { e.stopPropagation(); });
+
+      window.addEventListener('resize', function () { clampPos(); applyTransform(); checkVisible(); });
+
+      /* ── Projects ────────────────────────────────────────────
+         Add / remove images by editing bgSrcs, middleSrcs,
+         topSrcs. bgPositions and middlePositions are fixed
+         slots — add more if you add more images.
+         ───────────────────────────────────────────────────── */
+      var ZONE_SIZE = 1800;
+
+      var PROJECTS = [
+        {
+          key: 'Tenerife',
+          name: 'Tenerife',
+          zoneCx: 3000, zoneCy: 3000,
+          bgSrcs: [
+            'images/Tenerife/bottom/01.webp',
+            'images/Tenerife/bottom/02.webp',
+            'images/Tenerife/bottom/03.webp',
+            'images/Tenerife/bottom/04.webp',
+            'images/Tenerife/bottom/05.webp'
+          ],
+          middleSrcs: [
+            'images/Tenerife/middle/01.webp',
+            'images/Tenerife/middle/02.webp',
+            'images/Tenerife/middle/03.webp',
+            'images/Tenerife/middle/04.webp',
+            'images/Tenerife/middle/05.webp',
+            'images/Tenerife/middle/06.webp',
+            'images/Tenerife/middle/07.webp',
+            'images/Tenerife/middle/08.webp',
+            'images/Tenerife/middle/09.webp',
+            'images/Tenerife/middle/10.webp'
+          ],
+          topSrcs: [
+            'images/Tenerife/top/01.webp',
+            'images/Tenerife/top/02.webp',
+            'images/Tenerife/top/03.webp',
+            'images/Tenerife/top/04.webp',
+            'images/Tenerife/top/05.webp',
+            'images/Tenerife/top/06.webp',
+            'images/Tenerife/top/07.webp'
+          ],
+          bgPositions: [
+            { cx: 2500, cy: 2500 },
+            { cx: 3500, cy: 2550 },
+            { cx: 2450, cy: 3400 },
+            { cx: 3500, cy: 3350 },
+            { cx: 3000, cy: 2950 }
+          ],
+          middlePositions: [
+            { cx: 2540, cy: 2300 },
+            { cx: 3000, cy: 2300 },
+            { cx: 3460, cy: 2300 },
+            { cx: 2770, cy: 2760 },
+            { cx: 3230, cy: 2760 },
+            { cx: 3690, cy: 2760 },
+            { cx: 2540, cy: 3220 },
+            { cx: 3000, cy: 3220 },
+            { cx: 3460, cy: 3220 },
+            { cx: 2770, cy: 3680 }
+          ]
+        },
+        {
+          key: 'Gran_can',
+          name: 'Gran Canaria',
+          zoneCx: 4400, zoneCy: 4400,
+          bgSrcs: [
+            'images/Gran_can/bottom/01.webp',
+            'images/Gran_can/bottom/02.webp',
+            'images/Gran_can/bottom/03.webp'
+          ],
+          middleSrcs: [
+            'images/Gran_can/middle/01.webp',
+            'images/Gran_can/middle/02.webp',
+            'images/Gran_can/middle/03.webp',
+            'images/Gran_can/middle/04.webp',
+            'images/Gran_can/middle/05.webp',
+            'images/Gran_can/middle/06.webp',
+            'images/Gran_can/middle/07.webp',
+            'images/Gran_can/middle/08.webp',
+            'images/Gran_can/middle/09.webp',
+            'images/Gran_can/middle/10.webp'
+          ],
+          topSrcs: [
+            'images/Gran_can/top/01.webp',
+            'images/Gran_can/top/02.webp',
+            'images/Gran_can/top/03.webp',
+            'images/Gran_can/top/04.webp',
+            'images/Gran_can/top/05.webp',
+            'images/Gran_can/top/06.webp',
+            'images/Gran_can/top/07.webp',
+            'images/Gran_can/top/08.webp',
+            'images/Gran_can/top/09.webp',
+            'images/Gran_can/top/10.webp'
+          ],
+          bgPositions: [
+            { cx: 3900, cy: 3900 },
+            { cx: 4900, cy: 3950 },
+            { cx: 3850, cy: 4800 },
+            { cx: 4850, cy: 4750 },
+            { cx: 4400, cy: 4350 }
+          ],
+          middlePositions: [
+            { cx: 3940, cy: 3700 },
+            { cx: 4400, cy: 3700 },
+            { cx: 4860, cy: 3700 },
+            { cx: 4170, cy: 4160 },
+            { cx: 4630, cy: 4160 },
+            { cx: 5090, cy: 4160 },
+            { cx: 3940, cy: 4620 },
+            { cx: 4400, cy: 4620 },
+            { cx: 4860, cy: 4620 },
+            { cx: 4170, cy: 5080 }
+          ]
+        },
+        {
+          key: 'Fuerteventura',
+          name: 'Fuerteventura',
+          zoneCx: 1600, zoneCy: 4400,
+          bgSrcs: [], middleSrcs: [], topSrcs: [],
+          bgPositions: [], middlePositions: []
+        }
+      ];
+
+      /* ── Helpers ─────────────────────────────────────────── */
+      function randFloat(lo, hi) { return lo + Math.random() * (hi - lo); }
+
+      function shuffle(arr) {
+        var a = arr.slice();
+        for (var i = a.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var t = a[i]; a[i] = a[j]; a[j] = t;
+        }
+        return a;
+      }
+
+      function loadDims(src, cb) {
+        var img = new Image();
+        img.onload  = function () { cb(img.naturalWidth, img.naturalHeight); };
+        img.onerror = function () { cb(200, 200); };
+        img.src = src;
+      }
+
+      function fitToBox(nw, nh, boxSize) {
+        var sc = boxSize / Math.max(nw, nh);
+        return { w: Math.round(nw * sc), h: Math.round(nh * sc) };
+      }
+
+      function makeDiv(className, cx, cy, w, h, rot, src, isMiddle, opacity) {
+        var div = document.createElement('div');
+        div.className = className;
+        var s = 'left:' + Math.round(cx - w / 2) + 'px;'
+              + 'top:'  + Math.round(cy - h / 2) + 'px;'
+              + 'width:' + w + 'px;height:' + h + 'px;';
+        if (opacity !== null) s += 'opacity:' + opacity.toFixed(2) + ';';
+        div.style.cssText = s;
+        if (isMiddle) {
+          div.style.setProperty('--rot', rot.toFixed(2) + 'deg');
+        } else {
+          div.style.transform = 'rotate(' + rot.toFixed(2) + 'deg)';
+        }
+        div.setAttribute('data-src', src);
+        div.setAttribute('data-alt', '');
+        return div;
+      }
+
+      /* ── Layer builders ──────────────────────────────────── */
+      function buildBgLayer(proj, done) {
+        var files = shuffle(proj.bgSrcs).slice(0, proj.bgPositions.length);
+        var i = 0;
+        function next() {
+          if (i >= files.length) { done(); return; }
+          var src = files[i];
+          var pos = proj.bgPositions[i];
+          i++;
+          loadDims(src, function (nw, nh) {
+            var dim = fitToBox(nw, nh, 600);
+            var op  = randFloat(0.40, 0.55);
+            layerTex.appendChild(makeDiv('texture-img', pos.cx, pos.cy, dim.w, dim.h, 0, src, false, op));
+            next();
+          });
+        }
+        next();
+      }
+
+      function buildMiddleLayer(proj, done) {
+        var files = shuffle(proj.middleSrcs).slice(0, proj.middlePositions.length);
+        var i = 0;
+        function next() {
+          if (i >= files.length) { done(); return; }
+          var src = files[i];
+          var pos = proj.middlePositions[i];
+          var num = i + 1;
+          i++;
+          loadDims(src, function (nw, nh) {
+            var dim = fitToBox(nw, nh, 400);
+            var div = makeDiv('illustration-img', pos.cx, pos.cy, dim.w, dim.h, 0, src, true, null);
+            div.tabIndex = 0;
+            div.setAttribute('data-alt', proj.name + ', illustration ' + num + ' \u2014 add description');
+            layerIll.appendChild(div);
+            next();
+          });
+        }
+        next();
+      }
+
+      function addSpotDragHandlers(el) {
+        el.addEventListener('mousedown', function (e) {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          el.classList.remove('is-animating');
+          var canvasX  = (e.clientX - tx * F_SPOTS) / scale;
+          var canvasY  = (e.clientY - ty * F_SPOTS) / scale;
+          spotDragOffX = canvasX - parseInt(el.style.left, 10);
+          spotDragOffY = canvasY - parseInt(el.style.top,  10);
+          draggingSpot = el;
+          el.classList.add('is-dragging');
+          document.body.classList.add('is-dragging');
+        });
+
+        el.addEventListener('touchstart', function (e) {
+          if (e.touches.length !== 1) return;
+          e.stopPropagation();
+          el.classList.remove('is-animating');
+          var t        = e.touches[0];
+          var canvasX  = (t.clientX - tx * F_SPOTS) / scale;
+          var canvasY  = (t.clientY - ty * F_SPOTS) / scale;
+          spotDragOffX = canvasX - parseInt(el.style.left, 10);
+          spotDragOffY = canvasY - parseInt(el.style.top,  10);
+          draggingSpot = el;
+          el.classList.add('is-dragging');
+          document.body.classList.add('is-dragging');
+        }, { passive: true });
+
+        el.addEventListener('touchmove', function (e) {
+          if (!draggingSpot) return;
+          e.preventDefault();
+          e.stopPropagation();
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        el.addEventListener('touchend', function () {
+          endDrag();
+        });
+      }
+
+      /* ── Sticker sheet ───────────────────────────────────── */
+      var SLOT_SIZE      = 100;
+      var SLOT_GAP       = 10;
+      var SHEET_PAD      = 16;
+      var SHEET_HEADER_H = 40;
+      var SHEET_FOOTER_H = 44;
+      var SHEET_COLS     = 3;
+
+      function setSheetBtn(btn, active) {
+        if (active) { btn.classList.remove('is-inactive'); }
+        else        { btn.classList.add('is-inactive'); }
+      }
+
+      function buildSheet(proj, done) {
+        var srcs  = proj.topSrcs;
+        var n     = srcs.length;
+        var rows  = n > 0 ? Math.ceil(n / SHEET_COLS) : 1;
+        var gridW = SHEET_COLS * SLOT_SIZE + (SHEET_COLS - 1) * SLOT_GAP;
+        var gridH = rows * SLOT_SIZE + (rows - 1) * SLOT_GAP;
+        var sheetW = SHEET_PAD + gridW + SHEET_PAD;
+        var sheetH = SHEET_HEADER_H + SHEET_PAD + gridH + SHEET_PAD + SHEET_FOOTER_H;
+
+        var MARGIN  = 240; // half max image size (200) + 40px breathing room
+        var CLEAR   = 60;  // gap between image edge and sheet edge
+        var cx, cy;
+
+        if (proj.middlePositions.length === 0) {
+          // Empty cluster — default position
+          cx = proj.zoneCx;
+          cy = proj.zoneCy + 1400;
+        } else {
+          // Compute bounding box of all middle images
+          var minX = Infinity, maxX = -Infinity;
+          var minY = Infinity, maxY = -Infinity;
+          proj.middlePositions.forEach(function (p) {
+            if (p.cx - MARGIN < minX) minX = p.cx - MARGIN;
+            if (p.cx + MARGIN > maxX) maxX = p.cx + MARGIN;
+            if (p.cy - MARGIN < minY) minY = p.cy - MARGIN;
+            if (p.cy + MARGIN > maxY) maxY = p.cy + MARGIN;
+          });
+
+          // Try placing below the cluster
+          var belowCy = maxY + CLEAR + sheetH / 2;
+          var belowCx = proj.zoneCx;
+          var belowFits = (belowCy + sheetH / 2) < CANVAS_H - 20
+                       && (belowCx - sheetW / 2) > 20
+                       && (belowCx + sheetW / 2) < CANVAS_W - 20;
+
+          // Try placing to the right of the cluster
+          var rightCx = maxX + CLEAR + sheetW / 2;
+          var rightCy = proj.zoneCy;
+          var rightFits = (rightCx + sheetW / 2) < CANVAS_W - 20
+                       && (rightCy - sheetH / 2) > 20
+                       && (rightCy + sheetH / 2) < CANVAS_H - 20;
+
+          // Try placing to the left of the cluster
+          var leftCx = minX - CLEAR - sheetW / 2;
+          var leftCy = proj.zoneCy;
+          var leftFits = (leftCx - sheetW / 2) > 20
+                      && (leftCy - sheetH / 2) > 20
+                      && (leftCy + sheetH / 2) < CANVAS_H - 20;
+
+          // Prefer below, then right, then left, then fallback
+          if (belowFits) {
+            cx = belowCx; cy = belowCy;
+          } else if (rightFits) {
+            cx = rightCx; cy = rightCy;
+          } else if (leftFits) {
+            cx = leftCx; cy = leftCy;
+          } else {
+            cx = proj.zoneCx; cy = proj.zoneCy + 1400;
+          }
+        }
+        var sheetLeft = Math.round(cx - sheetW / 2);
+        var sheetTop  = Math.round(cy - sheetH / 2);
+
+        /* Sheet frame on layer-sheets (no multiply blend) */
+        var sheetDiv = document.createElement('div');
+        sheetDiv.className    = 'sticker-sheet';
+        sheetDiv.style.left   = sheetLeft + 'px';
+        sheetDiv.style.top    = sheetTop  + 'px';
+        sheetDiv.style.width  = sheetW    + 'px';
+        sheetDiv.style.height = sheetH    + 'px';
+        sheetDiv.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+        sheetDiv.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+
+        /* Header */
+        var hdrRow = document.createElement('div');
+        hdrRow.style.cssText = 'position:absolute;top:0;left:0;right:0;height:' + SHEET_HEADER_H + 'px;'
+          + 'border-bottom:1px solid var(--black);display:flex;align-items:center;padding:0 ' + SHEET_PAD + 'px;';
+        var nameEl = document.createElement('span');
+        nameEl.textContent = proj.name + ' stickers';
+        nameEl.style.cssText = 'font-family:var(--mono);font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;';
+        hdrRow.appendChild(nameEl);
+        sheetDiv.appendChild(hdrRow);
+
+        /* Button row */
+        var btnRow     = document.createElement('div');
+        btnRow.className = 'sheet-buttons';
+        var btnScatter = document.createElement('button');
+        btnScatter.className   = 'sheet-btn';
+        btnScatter.textContent = 'scatter';
+        var btnShuffle = document.createElement('button');
+        btnShuffle.className   = 'sheet-btn is-inactive';
+        btnShuffle.textContent = 'shuffle';
+        var btnGather  = document.createElement('button');
+        btnGather.className    = 'sheet-btn is-inactive';
+        btnGather.textContent  = 'gather';
+        btnRow.appendChild(btnScatter);
+        btnRow.appendChild(btnShuffle);
+        btnRow.appendChild(btnGather);
+        sheetDiv.appendChild(btnRow);
+        layerSheets.appendChild(sheetDiv);
+
+        /* Local sticker state (closure — only affects this sheet) */
+        var stickers = [];
+
+        function updateButtons() {
+          if (stickers.length === 0) return;
+          var allOnSheet = stickers.every(function (s) { return s.dataset.onSheet === 'true'; });
+          setSheetBtn(btnScatter, allOnSheet);
+          setSheetBtn(btnShuffle, !allOnSheet);
+          setSheetBtn(btnGather,  !allOnSheet);
+        }
+
+        function scatter() {
+          var half = ZONE_SIZE / 2, margin = 80;
+          stickers.forEach(function (div) { div.dataset.onSheet = 'false'; });
+          updateButtons();
+          stickers.forEach(function (div, i) {
+            var w  = parseInt(div.style.width,  10);
+            var h  = parseInt(div.style.height, 10);
+            var rx = proj.zoneCx + randFloat(-half + margin, half - margin);
+            var ry = proj.zoneCy + randFloat(-half + margin, half - margin);
+            setTimeout(function () {
+              div.classList.add('is-animating');
+              div.style.left = Math.round(rx - w / 2) + 'px';
+              div.style.top  = Math.round(ry - h / 2) + 'px';
+            }, i * 60);
+          });
+        }
+
+        function shuffle() {
+          var half = ZONE_SIZE / 2, margin = 80;
+          stickers.forEach(function (div, i) {
+            var w  = parseInt(div.style.width,  10);
+            var h  = parseInt(div.style.height, 10);
+            var rx = proj.zoneCx + randFloat(-half + margin, half - margin);
+            var ry = proj.zoneCy + randFloat(-half + margin, half - margin);
+            setTimeout(function () {
+              div.classList.add('is-animating');
+              div.style.left = Math.round(rx - w / 2) + 'px';
+              div.style.top  = Math.round(ry - h / 2) + 'px';
+            }, i * 60);
+          });
+        }
+
+        function gather() {
+          stickers.forEach(function (div) { div.dataset.onSheet = 'true'; });
+          updateButtons();
+          stickers.forEach(function (div, i) {
+            setTimeout(function () {
+              div.classList.add('is-animating');
+              div.style.left = div.dataset.slotLeft + 'px';
+              div.style.top  = div.dataset.slotTop  + 'px';
+            }, i * 60);
+          });
+        }
+
+        if (n === 0) {
+          setSheetBtn(btnScatter, false);
+          done();
+          return;
+        }
+
+        /* Sticker images on layer-spots (keep multiply blend) */
+        stickers = new Array(n);
+        var loaded = 0;
+
+        srcs.forEach(function (src, i) {
+          loadDims(src, function (nw, nh) {
+            var dim      = fitToBox(nw, nh, SLOT_SIZE);
+            var col      = i % SHEET_COLS;
+            var row      = Math.floor(i / SHEET_COLS);
+            var slotLeft = sheetLeft + SHEET_PAD
+                         + col * (SLOT_SIZE + SLOT_GAP)
+                         + Math.round((SLOT_SIZE - dim.w) / 2);
+            var slotTop  = sheetTop + SHEET_HEADER_H + SHEET_PAD
+                         + row * (SLOT_SIZE + SLOT_GAP)
+                         + Math.round((SLOT_SIZE - dim.h) / 2);
+
+            var divEl = document.createElement('div');
+            divEl.className     = 'spot-img';
+            divEl.style.left    = slotLeft + 'px';
+            divEl.style.top     = slotTop  + 'px';
+            divEl.style.width   = dim.w    + 'px';
+            divEl.style.height  = dim.h    + 'px';
+            divEl.setAttribute('data-src', src);
+            divEl.setAttribute('data-alt', '');
+            divEl.dataset.zoneCx   = proj.zoneCx;
+            divEl.dataset.zoneCy   = proj.zoneCy;
+            divEl.dataset.zoneSize = ZONE_SIZE;
+            divEl.dataset.slotLeft = slotLeft;
+            divEl.dataset.slotTop  = slotTop;
+            divEl.dataset.onSheet  = 'true';
+            divEl._onDragEnd = updateButtons;
+            addSpotDragHandlers(divEl);
+            stickers[i] = divEl;
+
+            loaded++;
+            if (loaded === n) {
+              stickers.forEach(function (s) { layerSpt.appendChild(s); });
+              btnScatter.addEventListener('click', scatter);
+              btnShuffle.addEventListener('click', shuffle);
+              btnGather.addEventListener('click',  gather);
+              done();
+            }
+          });
+        });
+      }
+
+      function buildImageDivs(done) {
+        var pending = PROJECTS.length * 3;
+        function onDone() { if (--pending === 0) done(); }
+        PROJECTS.forEach(function (proj) {
+          buildBgLayer(proj, onDone);
+          buildMiddleLayer(proj, onDone);
+          buildSheet(proj, onDone);
+        });
+      }
+
+      /* ── Location navigation ────────────────────────────── */
+      function navigateTo(cx, cy) {
+        if (inertiaRaf) { cancelAnimationFrame(inertiaRaf); inertiaRaf = null; }
+        if (arrowRaf)   { cancelAnimationFrame(arrowRaf);   arrowRaf = null; }
+        if (navRaf)     { cancelAnimationFrame(navRaf);     navRaf = null; }
+
+        var startTx  = tx;
+        var startTy  = ty;
+        var targetTx = Math.round(window.innerWidth  / 2 - cx * scale);
+        var targetTy = Math.round(window.innerHeight / 2 - cy * scale);
+        var startTime = null;
+        var DURATION  = 1000;
+
+        function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function step(ts) {
+          if (startTime === null) startTime = ts;
+          var progress = Math.min((ts - startTime) / DURATION, 1);
+          var e = easeOut(progress);
+          tx = startTx + (targetTx - startTx) * e;
+          ty = startTy + (targetTy - startTy) * e;
+          clampPos();
+          applyTransform();
+          checkVisible();
+          if (progress < 1) {
+            navRaf = requestAnimationFrame(step);
+          } else {
+            navRaf = null;
+          }
+        }
+
+        navRaf = requestAnimationFrame(step);
+      }
+
+      Array.from(document.querySelectorAll('#nav-locations a')).forEach(function (link) {
+        link.addEventListener('click', function (e) {
+          e.preventDefault();
+          var cx = parseInt(this.getAttribute('data-cx'), 10);
+          var cy = parseInt(this.getAttribute('data-cy'), 10);
+          this.classList.add('visited');
+          navigateTo(cx, cy);
+        });
+      });
+
+      /* ── Illustration expand ────────────────────────────── */
+      var expandedIll = null;
+
+      layerIll.addEventListener('click', function (e) {
+        if (dragMoved) return;
+        var el = e.target.closest('.illustration-img');
+        if (!el) {
+          if (expandedIll) { expandedIll.classList.remove('is-expanded'); expandedIll = null; }
+          return;
+        }
+        if (expandedIll && expandedIll !== el) {
+          expandedIll.classList.remove('is-expanded');
+        }
+        el.classList.toggle('is-expanded');
+        expandedIll = el.classList.contains('is-expanded') ? el : null;
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!expandedIll) return;
+        if (!e.target.closest('.illustration-img')) {
+          expandedIll.classList.remove('is-expanded');
+          expandedIll = null;
+        }
+      });
+
+      /* ── Illustration keyboard expand ───────────────────── */
+      layerIll.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var el = document.activeElement;
+        if (!el || !el.classList.contains('illustration-img')) return;
+        e.preventDefault();
+        el.click();
+      });
+
+
+      /* ── Init ───────────────────────────────────────────── */
+      function init() {
+        tx = Math.round(window.innerWidth  / 2 - LANDING_CX);
+        ty = Math.round(window.innerHeight / 2 - LANDING_CY);
+
+        // Layers carry the transforms — canvas div stays static.
+        canvas.style.willChange = 'auto';
+
+        // Scale from the top-left corner (canvas origin) so that
+        // translate + scale compose correctly for cursor-centred zoom.
+        layerTex.style.transformOrigin    = '0 0';
+        layerIll.style.transformOrigin    = '0 0';
+        layerSheets.style.transformOrigin = '0 0';
+        layerSpt.style.transformOrigin    = '0 0';
+
+        applyTransform();
+        buildImageDivs(function () {
+          initLazy();
+          loadingTotal  = pendingImgs.length;
+          var all       = pendingImgs.slice();
+          pendingImgs   = [];
+          all.forEach(function (el) { loadEl(el); });
+        });
+        initHint();
+      }
+
+      init();
+
+      /* ── Screenreader announcement ──────────────────────── */
+      setTimeout(function () {
+        document.getElementById('sr-announcement').textContent =
+          'You are on the portfolio of Ed Demi, an illustrator and designer based in Glasgow. '
+          + 'This is an infinite canvas \u2014 a sea of illustrations spread across a large space, '
+          + 'themed around travel and leisure. Use arrow keys or drag to explore. Three locations '
+          + 'live on this canvas: Tenerife, Gran Canaria, and Fuerteventura. Use the navigation '
+          + 'to jump between locations, and Tab to move between illustrations.';
+      }, 500);
+
+    })();
+  </script>
+
+  <script>
+    /* ── Sunset sky animation ────────────────────────────────
+       Starts on page load. Full arc (fade in → peak → fade out)
+       completes over DURATION ms. Sun descends across that time.
+       All colours are near-white pastels.                       */
+    (function () {
+      var DURATION  = 5 * 60 * 1000; // 5 minutes in ms
+      var startTime = Date.now();
+
+      var sky = document.getElementById('sky');
+      var ctx = sky.getContext('2d');
+
+      function resize() {
+        sky.width  = window.innerWidth;
+        sky.height = window.innerHeight;
+        draw();
+      }
+      window.addEventListener('resize', resize);
+      sky.width  = window.innerWidth;
+      sky.height = window.innerHeight;
+
+      // progress 0→1 over DURATION, then stays at 1 (animation done)
+      function elapsed() {
+        return Math.min(1, (Date.now() - startTime) / DURATION);
+      }
+
+      // Bell curve: 0 at start, peaks at midpoint, 0 at end
+      function goldenFactor(p) {
+        var t = p <= 0.5 ? p * 2 : (1 - p) * 2;
+        return t * t * (3 - 2 * t); // smoothstep
+      }
+
+      function rgba(r, g, b, a) {
+        a = Math.max(0, Math.min(1, a));
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+      }
+
+      function draw() {
+        var w = sky.width;
+        var h = sky.height;
+        var p = elapsed();
+        var f = goldenFactor(p);
+
+        ctx.clearRect(0, 0, w, h);
+
+        if (f > 0.005) {
+          // Sky gradient — white at top, soft warm pastels at bottom
+          var bg = ctx.createLinearGradient(0, 0, 0, h);
+          bg.addColorStop(0.00, rgba(255, 255, 255, 0));
+          bg.addColorStop(0.30, rgba(255, 248, 238, f * 0.12));
+          bg.addColorStop(0.62, rgba(255, 232, 208, f * 0.36));
+          bg.addColorStop(0.82, rgba(255, 220, 185, f * 0.50));
+          bg.addColorStop(1.00, rgba(255, 210, 165, f * 0.60));
+          ctx.fillStyle = bg;
+          ctx.fillRect(0, 0, w, h);
+
+          // Sun descends from 68% down the viewport at start to 96% at end
+          var sunX = w * 0.50;
+          var sunY = h * (0.68 + p * 0.28);
+          var sunR = Math.min(w, h) * 0.055;
+
+          // Wide soft halo
+          var halo = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 7);
+          halo.addColorStop(0.00, rgba(255, 230, 178, f * 0.46));
+          halo.addColorStop(0.45, rgba(255, 222, 165, f * 0.14));
+          halo.addColorStop(1.00, rgba(255, 220, 160, 0));
+          ctx.fillStyle = halo;
+          ctx.fillRect(0, 0, w, h);
+
+          // Sun disc — soft radial, no hard edge
+          var disc = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
+          disc.addColorStop(0.00, rgba(255, 248, 220, f * 0.88));
+          disc.addColorStop(0.55, rgba(255, 232, 188, f * 0.60));
+          disc.addColorStop(1.00, rgba(255, 225, 172, 0));
+          ctx.fillStyle = disc;
+          ctx.fillRect(0, 0, w, h);
+        }
+
+        // Stop the loop once the animation is fully complete
+        if (p < 1) requestAnimationFrame(draw);
+      }
+
+      draw();
+    }());
+  </script>
+
+</body>
+</html>

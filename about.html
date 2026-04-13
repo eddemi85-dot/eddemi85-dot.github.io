@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About — A. Mercer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=Space+Mono&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black: #000000;
+      --white: #ffffff;
+      --bg:    #f7f5f0;
+      --mono:  'Space Mono', 'Courier New', monospace;
+      --grot:  'Space Grotesk', Arial, sans-serif;
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      background: var(--bg);
+      color: var(--black);
+      font-family: var(--grot);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='240' height='240' filter='url(%23g)'/></svg>");
+      background-repeat: repeat;
+      background-size: 240px 240px;
+    }
+
+    /* ── Nav ────────────────────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg);
+      border-bottom: 1px solid var(--black);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.2rem clamp(1.5rem, 5vw, 4rem);
+    }
+
+    #site-title-link {
+      display: block;
+      min-width: 140px;
+      min-height: 48px;
+      /* Hand-drawn title image goes here */
+    }
+
+    nav {
+      display: flex;
+      gap: 2rem;
+    }
+
+    nav a {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--black);
+      text-decoration: none;
+    }
+
+    nav a[aria-current="page"] {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* ── Content ────────────────────────────────────────── */
+    main {
+      padding: clamp(3rem, 8vw, 7rem) clamp(1.5rem, 5vw, 4rem) clamp(5rem, 10vw, 9rem);
+    }
+
+    .about-grid {
+      display: flex;
+      align-items: flex-start;
+      gap: clamp(2.5rem, 7vw, 6rem);
+    }
+
+    .about-img {
+      flex: 0 0 38%;
+      max-width: 420px;
+    }
+
+    .about-img img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+    }
+
+    .about-img-note {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 0.6rem;
+      color: var(--black);
+    }
+
+    .about-text {
+      flex: 1;
+      padding-top: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--grot);
+      font-weight: 700;
+      font-size: clamp(2.5rem, 5.5vw, 5rem);
+      line-height: 0.95;
+      letter-spacing: -0.025em;
+      margin-bottom: 2rem;
+    }
+
+    .rule {
+      border: none;
+      border-top: 1px solid var(--black);
+      margin-bottom: 2rem;
+    }
+
+    .about-text p {
+      font-family: var(--grot);
+      font-size: 0.95rem;
+      line-height: 1.75;
+      max-width: 52ch;
+      margin-bottom: 1rem;
+    }
+
+    dl {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 2;
+      margin-top: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    dt {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      margin-top: 1.2rem;
+    }
+
+    dt:first-child { margin-top: 0; }
+
+    dd { padding-left: 1.1rem; }
+
+    .contact-label {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .contact-email {
+      font-family: var(--grot);
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--black);
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--black);
+      padding: 1.1rem clamp(1.5rem, 5vw, 4rem);
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .about-grid { flex-direction: column; }
+      .about-img  { flex: none; width: 70%; max-width: 100%; }
+    }
+
+    @media (max-width: 440px) {
+      .about-img { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <header>
+    <a href="index.html" id="site-title-link" aria-label="Back to canvas">
+      <!-- Hand-drawn title image goes here -->
+    </a>
+    <nav>
+      <a href="index.html">Work</a>
+      <a href="about.html" aria-current="page">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="about-grid">
+
+      <div class="about-img">
+        <img src="https://picsum.photos/seed/portrait01/480/640" alt="Ava Mercer" />
+        <p class="about-img-note">London, UK &mdash; b. 1991</p>
+      </div>
+
+      <div class="about-text">
+        <h1>Ed<br>Demi</h1>
+        <hr class="rule" />
+
+        <p>
+          Illustrator and designer. All illustration work is done by human hands. All ideas are from the human brain. All the coding has been done by ai.
+        </p>
+        <p>
+          Ed is a seasoned product designer who has over 10 years experience working with brands like the BBC, UKGOV, Motorola Solutions, Tesco Bank and OVO.
+        </p>
+
+        <dl>
+          <dt>Services</dt>
+          <dd>Editorial illustration</dd>
+          <dd>Book &amp; cover art</dd>
+          <dd>Botanical studies</dd>
+          <dd>Portrait work</dd>
+          <dd>Pattern &amp; surface design</dd>
+
+          <dt>Medium</dt>
+          <dd>Ink &amp; watercolour</dd>
+          <dd>Gouache</dd>
+          <dd>Digital (Procreate)</dd>
+          <dd>Risograph</dd>
+        </dl>
+
+        <hr class="rule" />
+
+        <p class="contact-label">Commissions &amp; enquiries</p>
+        <a href="mailto:hello@amercer.studio" class="contact-email">hello@amercer.studio</a>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <span>A. Mercer Studio</span>
+    <span>&copy; 2026</span>
+  </footer>
+
+</body>
+</html>

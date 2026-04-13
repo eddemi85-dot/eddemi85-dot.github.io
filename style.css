@@ -1,0 +1,486 @@
+/* ── Reset ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Tokens ──────────────────────────────────────────── */
+:root {
+  --black: #000000;
+  --white: #ffffff;
+  --bg:    #ffffff;
+  --mono:  'Space Mono', 'Courier New', monospace;
+  --grot:  'Space Grotesk', Arial, sans-serif;
+}
+
+/* ── Base ────────────────────────────────────────────── */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--black);
+  font-family: var(--grot);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.is-dragging { cursor: grabbing; }
+
+/* ── Grain ───────────────────────────────────────────── */
+/*
+  SVG feTurbulence noise rendered as a fixed overlay.
+  mix-blend-mode: multiply means the grain only darkens —
+  it won't lighten images or punch white holes in the layout.
+  Opacity 0.04 keeps it barely perceptible — paper, not texture.
+*/
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='240' height='240' filter='url(%23g)'/></svg>");
+  background-repeat: repeat;
+  background-size: 240px 240px;
+}
+
+/* ── Sky ─────────────────────────────────────────────── */
+#sky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+/* ── Canvas ──────────────────────────────────────────── */
+#canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6000px;
+  height: 6000px;
+  will-change: transform;
+}
+
+/* ── Layers ──────────────────────────────────────────── */
+#layer-textures,
+#layer-illustrations,
+#layer-sheets,
+#layer-spots {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#layer-textures,
+#layer-illustrations,
+#layer-spots         { mix-blend-mode: multiply; }
+
+#layer-textures,
+#layer-sheets,
+#layer-spots         { pointer-events: none; }
+
+/* Spot images are individually draggable — override inherited none */
+.spot-img            { pointer-events: auto; cursor: grab; }
+.spot-img.is-dragging { cursor: grabbing; }
+
+/* ── Image placeholders ──────────────────────────────── */
+.texture-img,
+.illustration-img,
+.spot-img {
+  position: absolute;
+  overflow: hidden;
+  /* Explicit width/height set inline — layout doesn't collapse before load */
+}
+
+.texture-img img,
+.illustration-img img,
+.spot-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* ── Fixed HUD ───────────────────────────────────────── */
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none; /* canvas events pass through */
+}
+
+/*
+  #site-title — blank placeholder.
+  Replace contents with a hand-drawn title image.
+  Recommended: <img src="title.png" alt="[Studio name]" />
+*/
+#site-title {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.75rem;
+  min-width: 180px;
+  min-height: 64px;
+  pointer-events: all;
+}
+
+#hud-nav {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1.75rem;
+  display: flex;
+  gap: 1.75rem;
+  pointer-events: all;
+}
+
+#hud-nav button {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+/* ── Zoom controls ───────────────────────────────────── */
+#hud-zoom {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: all;
+}
+
+#hud-zoom button {
+  width: 48px;
+  height: 48px;
+  font-family: var(--mono);
+  font-size: 1.4rem;
+  color: var(--black);
+  background: var(--white);
+  border: 1px solid var(--black);
+  border-radius: 0;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#hud-zoom button:hover {
+  background: var(--black);
+  color: var(--white);
+}
+
+#hud-zoom button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+#hud-zoom button:disabled:hover {
+  background: var(--white);
+  color: var(--black);
+}
+
+@media (max-width: 768px) {
+  #hud-zoom { display: none; }
+}
+
+/* ── Hint ────────────────────────────────────────────── */
+#hint {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--black);
+  pointer-events: none;
+  /* Hint fade is explicitly allowed */
+  transition: opacity 0.8s;
+}
+
+#hint.is-gone { opacity: 0; }
+
+/* ── Overlays ────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--black);
+  color: var(--white);
+  padding: clamp(1.75rem, 5vw, 4.5rem);
+  overflow-y: auto;
+  /* Overlay fade is explicitly allowed */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.overlay.is-open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.overlay-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.75rem;
+  font-family: var(--mono);
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--white);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+}
+
+.overlay-inner {
+  max-width: 520px;
+  padding-top: clamp(3rem, 8vw, 6rem);
+}
+
+.overlay-inner h2 {
+  font-family: var(--grot);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 5vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  margin-bottom: 2rem;
+}
+
+.overlay-inner p {
+  font-family: var(--grot);
+  font-size: 0.95rem;
+  line-height: 1.75;
+  max-width: 48ch;
+  margin-bottom: 1rem;
+}
+
+.overlay-inner .meta {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 2.5rem;
+  margin-bottom: 0.5rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.overlay-inner a {
+  color: var(--white);
+  font-family: var(--grot);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* ── Skip link ───────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1.75rem;
+  z-index: 10000;
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.skip-link:focus {
+  top: 1.5rem;
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
+}
+
+/* ── Illustration expand ──────────────────────────────── */
+.illustration-img {
+  cursor: pointer;
+  transform: rotate(var(--rot, 0deg));
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.illustration-img.is-expanded {
+  transform: rotate(var(--rot, 0deg)) scale(2);
+  z-index: 1;
+}
+
+/* ── Illustration focus ring ─────────────────────────── */
+.illustration-img:focus-visible {
+  outline: 2px solid var(--black);
+  outline-offset: 3px;
+}
+
+/* ── Location navigation ──────────────────────────────── */
+#nav-locations {
+  position: absolute;
+  left: 1.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  pointer-events: all;
+}
+
+#nav-locations a {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--black);
+  text-decoration: none;
+  line-height: 1;
+}
+
+#nav-locations a.visited {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+/* ── Loading screen ───────────────────────────────────── */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  transition: opacity 0.5s;
+}
+
+/*
+  The arm rotates clockwise around the circle centre.
+  The plane sits at translateY(-60px) — top of the ring.
+  Because the plane is a child of the arm, it rotates with it:
+  at arm=0° the emoji faces right (✈ natural direction = clockwise
+  travel tangent at the top); at arm=90° it faces down, etc.
+  No counter-rotation is applied — that would keep it world-upright
+  and break the forward-facing behaviour.
+*/
+@keyframes orbit-arm {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+#loading-orbit {
+  width: 120px;
+  height: 120px;
+  border: 2px dotted rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+}
+
+#loading-plane-arm {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  animation: orbit-arm 2.5s linear infinite;
+  transform-origin: 0 0;
+}
+
+@keyframes counter-orbit {
+  from { transform: translateY(-60px) rotate(45deg); }
+  to   { transform: translateY(-60px) rotate(-315deg); }
+}
+
+#loading-plane {
+  font-size: 0.9rem;
+  line-height: 1;
+  display: block;
+  animation: counter-orbit 2.5s linear infinite;
+  transform-origin: center center;
+}
+
+#loading-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--black);
+}
+
+/* ── Sticker sheet ────────────────────────────────────── */
+.sticker-sheet {
+  position: absolute;
+  background: var(--white);
+  box-shadow: 2px 4px 18px rgba(0, 0, 0, 0.13);
+  pointer-events: all;
+}
+
+.sheet-buttons {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-top: 1px solid var(--black);
+}
+
+.sheet-btn {
+  flex: 1;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--white);
+  border: 1px solid var(--black);
+  color: var(--black);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sheet-btn:hover {
+  background: var(--black);
+  color: var(--white);
+}
+
+.sheet-btn.is-inactive {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* ── Sticker animation ────────────────────────────────── */
+.spot-img.is-animating {
+  transition: left 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              top  400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
