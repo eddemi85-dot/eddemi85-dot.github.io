@@ -15,7 +15,9 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, #c8c8c8 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--black);
   font-family: var(--grot);
   cursor: grab;
@@ -44,17 +46,6 @@ body.is-dragging { cursor: grabbing; }
   background-size: 240px 240px;
 }
 
-/* ── Sky ─────────────────────────────────────────────── */
-#sky {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-  mix-blend-mode: multiply;
-}
 
 /* ── Canvas ──────────────────────────────────────────── */
 #canvas {

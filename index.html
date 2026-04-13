@@ -33,9 +33,7 @@
     <p id="loading-label">boarding...</p>
   </div>
 
-  <canvas id="sky" aria-hidden="true"></canvas>
-
-  <div class="grain" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
 
   <!-- ── Fixed HUD ──────────────────────────────────────── -->
   <div id="hud">
@@ -1095,91 +1093,6 @@
     })();
   </script>
 
-  <script>
-    /* ── Sunset sky animation ────────────────────────────────
-       Starts on page load. Full arc (fade in → peak → fade out)
-       completes over DURATION ms. Sun descends across that time.
-       All colours are near-white pastels.                       */
-    (function () {
-      var DURATION  = 5 * 60 * 1000; // 5 minutes in ms
-      var startTime = Date.now();
-
-      var sky = document.getElementById('sky');
-      var ctx = sky.getContext('2d');
-
-      function resize() {
-        sky.width  = window.innerWidth;
-        sky.height = window.innerHeight;
-        draw();
-      }
-      window.addEventListener('resize', resize);
-      sky.width  = window.innerWidth;
-      sky.height = window.innerHeight;
-
-      // progress 0→1 over DURATION, then stays at 1 (animation done)
-      function elapsed() {
-        return Math.min(1, (Date.now() - startTime) / DURATION);
-      }
-
-      // Bell curve: 0 at start, peaks at midpoint, 0 at end
-      function goldenFactor(p) {
-        var t = p <= 0.5 ? p * 2 : (1 - p) * 2;
-        return t * t * (3 - 2 * t); // smoothstep
-      }
-
-      function rgba(r, g, b, a) {
-        a = Math.max(0, Math.min(1, a));
-        return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
-      }
-
-      function draw() {
-        var w = sky.width;
-        var h = sky.height;
-        var p = elapsed();
-        var f = goldenFactor(p);
-
-        ctx.clearRect(0, 0, w, h);
-
-        if (f > 0.005) {
-          // Sky gradient — white at top, soft warm pastels at bottom
-          var bg = ctx.createLinearGradient(0, 0, 0, h);
-          bg.addColorStop(0.00, rgba(255, 255, 255, 0));
-          bg.addColorStop(0.30, rgba(255, 248, 238, f * 0.12));
-          bg.addColorStop(0.62, rgba(255, 232, 208, f * 0.36));
-          bg.addColorStop(0.82, rgba(255, 220, 185, f * 0.50));
-          bg.addColorStop(1.00, rgba(255, 210, 165, f * 0.60));
-          ctx.fillStyle = bg;
-          ctx.fillRect(0, 0, w, h);
-
-          // Sun descends from 68% down the viewport at start to 96% at end
-          var sunX = w * 0.50;
-          var sunY = h * (0.68 + p * 0.28);
-          var sunR = Math.min(w, h) * 0.055;
-
-          // Wide soft halo
-          var halo = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 7);
-          halo.addColorStop(0.00, rgba(255, 230, 178, f * 0.46));
-          halo.addColorStop(0.45, rgba(255, 222, 165, f * 0.14));
-          halo.addColorStop(1.00, rgba(255, 220, 160, 0));
-          ctx.fillStyle = halo;
-          ctx.fillRect(0, 0, w, h);
-
-          // Sun disc — soft radial, no hard edge
-          var disc = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
-          disc.addColorStop(0.00, rgba(255, 248, 220, f * 0.88));
-          disc.addColorStop(0.55, rgba(255, 232, 188, f * 0.60));
-          disc.addColorStop(1.00, rgba(255, 225, 172, 0));
-          ctx.fillStyle = disc;
-          ctx.fillRect(0, 0, w, h);
-        }
-
-        // Stop the loop once the animation is fully complete
-        if (p < 1) requestAnimationFrame(draw);
-      }
-
-      draw();
-    }());
-  </script>
 
 </body>
 </html>
