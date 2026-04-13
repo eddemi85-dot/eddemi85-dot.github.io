@@ -16,7 +16,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   background-color: var(--bg);
-  background-image: radial-gradient(circle, #c8c8c8 1px, transparent 1px);
+  background-image: radial-gradient(circle, #e0e0e0 1px, transparent 1px);
   background-size: 24px 24px;
   color: var(--black);
   font-family: var(--grot);
