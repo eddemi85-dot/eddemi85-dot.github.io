@@ -504,6 +504,7 @@
           key: 'Tenerife',
           name: 'Tenerife',
           zoneCx: 3000, zoneCy: 3000,
+          sheetPos: { cx: 4150, cy: 2500 },
           bgSrcs: [
             'images/Tenerife/bottom/01.webp',
             'images/Tenerife/bottom/02.webp',
@@ -762,11 +763,15 @@
         var CLEAR   = 60;  // gap between image edge and sheet edge
         var cx, cy;
 
-        if (proj.middlePositions.length === 0) {
+        if (proj.sheetPos) {
+          // Manual override — use explicit canvas coordinates
+          cx = proj.sheetPos.cx;
+          cy = proj.sheetPos.cy;
+        } else if (proj.middlePositions.length === 0) {
           // Empty cluster — default position
           cx = proj.zoneCx;
           cy = proj.zoneCy + 1400;
-        } else {
+        } else { // auto-place
           // Compute bounding box of all middle images
           var minX = Infinity, maxX = -Infinity;
           var minY = Infinity, maxY = -Infinity;
