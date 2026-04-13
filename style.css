@@ -361,65 +361,14 @@ body.is-dragging { cursor: grabbing; }
   z-index: 9000;
   background: var(--bg);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.25rem;
   transition: opacity 0.5s;
 }
 
-/*
-  The arm rotates clockwise around the circle centre.
-  The plane sits at translateY(-60px) — top of the ring.
-  Because the plane is a child of the arm, it rotates with it:
-  at arm=0° the emoji faces right (✈ natural direction = clockwise
-  travel tangent at the top); at arm=90° it faces down, etc.
-  No counter-rotation is applied — that would keep it world-upright
-  and break the forward-facing behaviour.
-*/
-@keyframes orbit-arm {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-#loading-orbit {
-  width: 120px;
-  height: 120px;
-  border: 2px dotted rgba(0, 0, 0, 0.2);
-  border-radius: 50%;
-  flex-shrink: 0;
-  position: relative;
-}
-
-#loading-plane-arm {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  animation: orbit-arm 2.5s linear infinite;
-  transform-origin: 0 0;
-}
-
-@keyframes counter-orbit {
-  from { transform: translateY(-60px) rotate(45deg); }
-  to   { transform: translateY(-60px) rotate(-315deg); }
-}
-
-#loading-plane {
-  font-size: 0.9rem;
-  line-height: 1;
-  display: block;
-  animation: counter-orbit 2.5s linear infinite;
-  transform-origin: center center;
-}
-
-#loading-label {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--black);
+#loading-gif {
+  width: 200px;
+  height: auto;
 }
 
 /* ── Sticker sheet ────────────────────────────────────── */
