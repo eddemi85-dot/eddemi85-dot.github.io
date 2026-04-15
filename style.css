@@ -8,6 +8,7 @@
   --bg:    #ffffff;
   --mono:  'Space Mono', 'Courier New', monospace;
   --grot:  'Space Grotesk', Arial, sans-serif;
+  --marker: 'Permanent Marker', cursive;
 }
 
 /* ── Base ────────────────────────────────────────────── */
@@ -132,8 +133,8 @@ body.is-dragging { cursor: grabbing; }
 }
 
 #hud-nav button {
-  font-family: var(--mono);
-  font-size: 0.68rem;
+  font-family: var(--marker);
+  font-size: 0.91rem;
   letter-spacing: 0.12em;
   text-transform: none;
   color: var(--black);
@@ -347,8 +348,8 @@ body.is-dragging { cursor: grabbing; }
   transform: rotate(180deg);
   width: 44px;
   padding: 0.75rem 0;
-  font-family: var(--mono);
-  font-size: 0.65rem;
+  font-family: var(--marker);
+  font-size: 0.87rem;
   letter-spacing: 0.12em;
   text-transform: none;
   color: var(--black);
